@@ -1,11 +1,5 @@
 import chess
 
-PAWN_VALUE = 100
-KNIGHT_VALUE = 300
-BISHOP_VALUE = 300
-ROOK_VALUE = 500
-QUEEN_VALUE = 900
-
 
 def get_legal_moves(board):
     return list(board.legal_moves)

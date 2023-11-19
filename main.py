@@ -1,7 +1,5 @@
 import chess
 import pygame
-import subprocess
-import communicate
 import engine
 
 SQUARE_SIZE = 85
@@ -328,24 +326,6 @@ def play_sound(board, move, special_event_occurred):
         move_self.play()
 
 
-def communicate_with_engine(board):
-    fen_string = board.fen()
-    legal_moves = ' '.join(str(move) for move in board.legal_moves)
-    # Separating FEN and moves by a newline
-    input_data = fen_string + "\n" + legal_moves
-
-    cpp_executable_path = "./engine"
-
-    process = subprocess.Popen(
-        cpp_executable_path,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True
-    )
-
-    stdout, stderr = process.communicate(input_data)
-
-
 running = True
 # Variables for drag and drop
 dragging = False
@@ -412,8 +392,6 @@ while running:
                 board.push(move)
                 print(move)
                 my_turn = False
-                # communicate_with_engine(board)
-                # communicate.get_best_move(board)
 
                 last_move_start_square = move.from_square
                 last_move_end_square = move.to_square
