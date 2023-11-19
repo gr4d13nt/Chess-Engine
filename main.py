@@ -1,6 +1,8 @@
 import chess
 import pygame
 import subprocess
+import communicate
+import engine
 
 SQUARE_SIZE = 85
 FPS = 60
@@ -94,6 +96,7 @@ def selection_screen(screen):
     black_button = text_black.get_rect(center=(width // 2, 2 * height // 3))
 
     running = True
+    global my_turn
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -101,8 +104,10 @@ def selection_screen(screen):
                 return None
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if white_button.collidepoint(event.pos):
+                    my_turn = True
                     return True  # True for white
                 elif black_button.collidepoint(event.pos):
+                    my_turn = False
                     return False  # False for black
 
         screen.fill(pygame.Color('White'))
@@ -203,27 +208,39 @@ def check_game_over(board):
     return None
 
 
-def game_over_screen(screen, outcome):
+def game_over_screen(screen):
     font = pygame.font.Font(None, 36)
+
+    # Game over message
     text = font.render(outcome, True, pygame.Color('Black'))
-    restart_button = font.render('Restart Game', True, pygame.Color('Black'))
+    text_rect = text.get_rect(center=(width // 2, height // 4))
 
-    text_rect = text.get_rect(center=(width // 2, height // 3))
-    button_rect = restart_button.get_rect(center=(width // 2, 2 * height // 3))
+    # Selection screen buttons
+    text_white = font.render('Play as White', True, pygame.Color('Black'))
+    text_black = font.render('Play as Black', True, pygame.Color('Black'))
+    white_button = text_white.get_rect(center=(width // 2, height // 2))
+    black_button = text_black.get_rect(center=(width // 2, 3 * height // 4))
 
-    screen.fill(pygame.Color('White'))
-    screen.blit(text, text_rect)
-    screen.blit(restart_button, button_rect)
-    pygame.display.flip()
-
-    # Event loop for the game over screen
     while True:
+        screen.fill(pygame.Color('White'))
+        screen.blit(text, text_rect)
+        screen.blit(text_white, white_button)
+        screen.blit(text_black, black_button)
+        pygame.display.flip()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                return False  # Indicates not to restart
+                return False  # Quit the game
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if button_rect.collidepoint(event.pos):
-                    return True  # Indicates to restart
+                if white_button.collidepoint(event.pos):
+                    global my_turn
+                    my_turn = True
+                    return True  # Restart and play as White
+
+                elif black_button.collidepoint(event.pos):
+                    my_turn = False
+                    return False  # Restart and play as Black
 
 
 def set_move(event, selected_square_col, selected_square_row, player_is_white):
@@ -283,6 +300,18 @@ def draw_legal_moves(legal_moves, screen, player_is_white):
             'Green'), (center_x, center_y), SQUARE_SIZE // 6)
 
 
+def check_special_event(board, move):
+    if move in board.legal_moves:
+        if board.piece_at(move.from_square).piece_type == chess.PAWN:
+            if move.to_square in chess.SquareSet(chess.BB_RANK_1 | chess.BB_RANK_8):
+                promote_pawn(board, screen, move,
+                             start_square, end_square, player_is_white)
+                return True
+        if board.is_capture(move):
+            capture.play()
+            return True
+
+
 def play_sound(board, move, special_event_occurred):
     # Check game conditions after the move
     if board.outcome():
@@ -301,19 +330,20 @@ def play_sound(board, move, special_event_occurred):
 
 def communicate_with_engine(board):
     fen_string = board.fen()
+    legal_moves = ' '.join(str(move) for move in board.legal_moves)
+    # Separating FEN and moves by a newline
+    input_data = fen_string + "\n" + legal_moves
+
     cpp_executable_path = "./engine"
 
-    # Start the C++ program and send the FEN string
     process = subprocess.Popen(
         cpp_executable_path,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        text=True  # This ensures that you're sending strings, not bytes
+        text=True
     )
-    # Send the FEN string and get the response
-    stdout, stderr = process.communicate(fen_string)
-    print("Response from C++ program:")
-    print(stdout)
+
+    stdout, stderr = process.communicate(input_data)
 
 
 running = True
@@ -326,6 +356,7 @@ selected_square_row = None
 legal_moves = None
 last_move_start_square = None
 last_move_end_square = None
+my_turn = True
 
 player_is_white = selection_screen(screen)
 if player_is_white is None:
@@ -379,7 +410,10 @@ while running:
                     special_event_occurred = True
 
                 board.push(move)
-                communicate_with_engine(board)
+                print(move)
+                my_turn = False
+                # communicate_with_engine(board)
+                # communicate.get_best_move(board)
 
                 last_move_start_square = move.from_square
                 last_move_end_square = move.to_square
@@ -397,7 +431,7 @@ while running:
 
     outcome = check_game_over(board)
     if outcome:
-        restart = game_over_screen(screen, outcome)
+        restart = game_over_screen(screen)
         if restart:
             board.reset()  # Reset the board for a new game
             last_move_end_square = None
@@ -415,3 +449,13 @@ while running:
     if dragging and selected_piece:
         screen.blit(piece_images[str(selected_piece)], selected_piece_position)
     pygame.display.flip()
+    if not my_turn:
+        move = engine.get_best_move(board, 5)
+        board.push(move)
+        special_event_occurred = check_special_event(board, move)
+        play_sound(board, move, special_event_occurred)
+        last_move_start_square = move.from_square
+        last_move_end_square = move.to_square
+        highlight_last_move(screen, last_move_start_square,
+                            last_move_end_square, SQUARE_SIZE, player_is_white)
+        my_turn = True
